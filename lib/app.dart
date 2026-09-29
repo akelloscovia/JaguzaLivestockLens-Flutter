@@ -4,6 +4,7 @@ import 'models/capture_evidence.dart';
 import 'screens/camera_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/photos_screen.dart';
+import 'services/capture_repository.dart';
 import 'services/upload_service.dart';
 
 class AppColors {
@@ -73,9 +74,21 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
   List<CaptureEvidence> _captures = [];
+  final CaptureRepository _captureRepository = CaptureRepository();
   final UploadService _uploadService = UploadService();
 
-  void _keepCapture(CaptureEvidence evidence) {
+  @override
+  void initState() {
+    super.initState();
+    _loadCaptures();
+  }
+
+  Future<void> _loadCaptures() async {
+    final captures = await _captureRepository.loadLatest();
+    if (mounted) setState(() => _captures = captures);
+  }
+
+  Future<void> _keepCapture(CaptureEvidence evidence) async {
     final captures = [..._captures];
     final existingIndex = captures.indexWhere(
       (capture) => capture.id == evidence.id,
@@ -86,6 +99,7 @@ class _MainNavigationState extends State<MainNavigation> {
       captures[existingIndex] = evidence;
     }
     setState(() => _captures = captures.take(5).toList());
+    await _captureRepository.save(evidence);
   }
 
   @override

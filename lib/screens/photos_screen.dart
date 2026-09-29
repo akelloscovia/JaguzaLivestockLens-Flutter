@@ -48,6 +48,18 @@ class PhotosScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     OcrImageReview(evidence: evidence),
+                    if (evidence.tagCropBytes != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Tag crop',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TagCropReview(evidence: evidence),
+                    ],
                     const SizedBox(height: 10),
                     Text(
                       evidence.capturedAt.toLocal().toString().split('.').first,
@@ -81,6 +93,13 @@ class PhotosScreen extends StatelessWidget {
                           ? 'No text detected.'
                           : evidence.ocrText,
                     ),
+                    if (evidence.tagConfidence != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tag OCR confidence: ${(evidence.tagConfidence! * 100).toStringAsFixed(0)}%',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                     if (evidence.blocks.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       for (

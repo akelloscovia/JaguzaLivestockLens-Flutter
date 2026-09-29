@@ -1,9 +1,11 @@
 import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jaguza/models/capture_evidence.dart';
+import 'package:jaguza/services/capture_repository.dart';
 import 'package:jaguza/services/upload_service.dart';
 
 void main() {
@@ -13,7 +15,12 @@ void main() {
     imageBytes: Uint8List.fromList([1, 2, 3]),
     imageWidth: 640,
     imageHeight: 480,
+    tagCropBytes: Uint8List.fromList([4, 5]),
+    tagCropWidth: 120,
+    tagCropHeight: 48,
+    tagRegion: const TagRegion(left: 100, top: 80, right: 220, bottom: 128),
     ocrText: 'TAG 4821',
+    tagConfidence: 0.92,
     blocks: const [
       OcrBlockEvidence(
         text: 'TAG 4821',
@@ -34,6 +41,7 @@ void main() {
     final bounds = blocks.single['bounding_box']! as Map<String, Object?>;
 
     expect(ocr['text'], 'TAG 4821');
+    expect(ocr['tag_id'], 'TAG 4821');
     expect(bounds['left'], 12);
     expect(bounds['bottom'], 61);
     expect(blocks.single['confidence'], 0.92);
@@ -69,8 +77,15 @@ void main() {
       expect(multipartBody, contains('content-type: image/jpeg'));
       expect(multipartBody, contains('name="ocr_json"'));
       expect(multipartBody, contains('"capture_id":"capture-1"'));
+      expect(multipartBody, contains('"tag_id":"TAG 4821"'));
       expect(multipartBody, contains('"text":"TAG 4821"'));
       expect(multipartBody, contains(String.fromCharCodes([1, 2, 3])));
+      expect(
+        multipartBody,
+        contains('name="tag_crop"; filename="tag_crop_capture-1.png"'),
+      );
+      expect(multipartBody, contains('content-type: image/png'));
+      expect(multipartBody, contains(String.fromCharCodes([4, 5])));
       return http.Response('accepted', 201);
     });
     final service = UploadService(
@@ -84,4 +99,29 @@ void main() {
     expect(result.message, contains('201'));
     service.close();
   });
+
+  test(
+    'capture repository restores original, tag crop, OCR, and upload state',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'jaguza_capture_test_',
+      );
+      try {
+        final repository = CaptureRepository(rootDirectory: temporaryDirectory);
+        await repository.save(evidence);
+
+        final restored = await repository.loadLatest();
+
+        expect(restored, hasLength(1));
+        expect(restored.single.imageBytes, evidence.imageBytes);
+        expect(restored.single.tagCropBytes, evidence.tagCropBytes);
+        expect(restored.single.tagRegion?.left, 100);
+        expect(restored.single.ocrText, 'TAG 4821');
+        expect(restored.single.tagConfidence, 0.92);
+        expect(restored.single.blocks.single.left, 12);
+      } finally {
+        await temporaryDirectory.delete(recursive: true);
+      }
+    },
+  );
 }

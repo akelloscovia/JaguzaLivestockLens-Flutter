@@ -51,6 +51,17 @@ class UploadService {
           ),
         )
         ..fields['ocr_json'] = jsonEncode(evidence.toOcrJson());
+      final cropBytes = evidence.tagCropBytes;
+      if (cropBytes != null) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'tag_crop',
+            cropBytes,
+            filename: 'tag_crop_${evidence.id}.png',
+            contentType: MediaType('image', 'png'),
+          ),
+        );
+      }
       if (evidence.ocrError != null) {
         request.fields['ocr_error'] = evidence.ocrError!;
       }

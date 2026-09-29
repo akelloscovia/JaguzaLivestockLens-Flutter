@@ -8,8 +8,10 @@ import '../app.dart';
 import '../models/capture_evidence.dart';
 import '../services/image_dimensions.dart';
 import '../services/ocr_service.dart';
+import '../services/tag_cropper.dart';
 import '../services/upload_service.dart';
 import '../widgets/ocr_image_review.dart';
+import '../widgets/tag_crop_selector.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({
@@ -18,7 +20,7 @@ class CameraScreen extends StatefulWidget {
     required this.uploadService,
   });
 
-  final ValueChanged<CaptureEvidence> onEvidenceChanged;
+  final Future<void> Function(CaptureEvidence) onEvidenceChanged;
   final UploadService uploadService;
 
   @override
@@ -30,6 +32,10 @@ class _CameraScreenState extends State<CameraScreen>
   CameraController? _controller;
   Uint8List? _capturedPhoto;
   CaptureEvidence? _evidence;
+  TagRegion? _tagRegion;
+  int? _imageWidth;
+  int? _imageHeight;
+  String? _captureId;
   String? _errorMessage;
   bool _isInitializing = true;
   bool _isCapturing = false;
@@ -107,53 +113,24 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _capturePhoto() async {
     final controller = _controller;
     if (controller == null || _isCapturing) return;
-    final onEvidenceChanged = widget.onEvidenceChanged;
     setState(() {
       _isCapturing = true;
-      _isProcessing = true;
       _errorMessage = null;
-      _processingMessage = 'Capturing original image...';
       _evidence = null;
     });
     try {
       final photo = await controller.takePicture();
       final photoBytes = await photo.readAsBytes();
+      final dimensions = await readImageDimensions(photoBytes);
       if (mounted) {
         setState(() {
           _capturedPhoto = photoBytes;
-          _processingMessage = 'Reading visible text...';
+          _imageWidth = dimensions.width;
+          _imageHeight = dimensions.height;
+          _captureId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+          _tagRegion = null;
         });
       }
-      final dimensions = await readImageDimensions(photoBytes);
-      OcrResult? result;
-      String? ocrError;
-      try {
-        result = await _ocrService.recognize(imagePath: photo.path);
-      } catch (error) {
-        ocrError = error is UnsupportedError
-            ? error.message
-            : 'Text recognition failed: $error';
-      }
-
-      final evidence = CaptureEvidence(
-        id: DateTime.now().toUtc().microsecondsSinceEpoch.toString(),
-        capturedAt: DateTime.now().toUtc(),
-        imageBytes: photoBytes,
-        imageWidth: dimensions.width,
-        imageHeight: dimensions.height,
-        ocrText: result?.text ?? '',
-        blocks: result?.blocks ?? const [],
-        ocrError: ocrError,
-      );
-      onEvidenceChanged(evidence);
-      if (mounted) {
-        setState(() {
-          _evidence = evidence;
-          _isProcessing = false;
-          _processingMessage = 'Uploading image and OCR evidence...';
-        });
-      }
-      await _uploadEvidence(evidence, onEvidenceChanged);
     } on CameraException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = error.description ?? 'Capture failed.');
@@ -171,9 +148,70 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  Future<void> _readTag() async {
+    final photo = _capturedPhoto;
+    final region = _tagRegion;
+    final width = _imageWidth;
+    final height = _imageHeight;
+    final captureId = _captureId;
+    if (photo == null || region == null || width == null || height == null) {
+      return;
+    }
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+      _processingMessage = 'Cropping tag region...';
+    });
+    try {
+      final crop = await cropTagImage(photo, region);
+      if (mounted) {
+        setState(() => _processingMessage = 'Reading text on tag...');
+      }
+      OcrResult? result;
+      String? ocrError;
+      try {
+        result = await _ocrService.recognize(crop: crop);
+      } catch (error) {
+        ocrError = error is UnsupportedError
+            ? error.message
+            : 'Tag OCR failed: $error';
+      }
+      final evidence = CaptureEvidence(
+        id: captureId ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        capturedAt: DateTime.now().toUtc(),
+        imageBytes: photo,
+        imageWidth: width,
+        imageHeight: height,
+        tagCropBytes: crop.bytes,
+        tagCropWidth: crop.width,
+        tagCropHeight: crop.height,
+        tagRegion: region,
+        ocrText: result?.text ?? '',
+        tagConfidence: result?.confidence,
+        blocks: result?.blocks ?? const [],
+        ocrError: ocrError,
+      );
+      if (mounted) {
+        setState(() {
+          _evidence = evidence;
+          _isProcessing = false;
+          _processingMessage = 'Uploading tag and OCR evidence...';
+        });
+      }
+      await widget.onEvidenceChanged(evidence);
+      await _uploadEvidence(evidence, widget.onEvidenceChanged);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Could not process tag: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
   Future<void> _uploadEvidence(
     CaptureEvidence evidence,
-    ValueChanged<CaptureEvidence> onEvidenceChanged,
+    Future<void> Function(CaptureEvidence) onEvidenceChanged,
   ) async {
     final uploading = evidence.copyWith(
       uploadStatus: UploadStatus.pending,
@@ -186,25 +224,36 @@ class _CameraScreenState extends State<CameraScreen>
         _evidence = uploading;
       });
     }
-    onEvidenceChanged(uploading);
-    final result = await widget.uploadService.upload(evidence);
-    final updated = evidence.copyWith(
-      uploadStatus: result.status,
-      uploadMessage: result.message,
-    );
-    if (mounted) {
-      setState(() {
-        _evidence = updated;
-        _isUploading = false;
-      });
+    try {
+      await onEvidenceChanged(uploading);
+      final result = await widget.uploadService.upload(evidence);
+      final updated = evidence.copyWith(
+        uploadStatus: result.status,
+        uploadMessage: result.message,
+      );
+      if (mounted) setState(() => _evidence = updated);
+      await onEvidenceChanged(updated);
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
-    onEvidenceChanged(updated);
   }
 
   void _retakePhoto() {
     setState(() {
       _capturedPhoto = null;
       _evidence = null;
+      _tagRegion = null;
+      _imageWidth = null;
+      _imageHeight = null;
+      _captureId = null;
+      _errorMessage = null;
+    });
+  }
+
+  void _adjustTagRegion() {
+    setState(() {
+      _evidence = null;
+      _tagRegion = null;
       _errorMessage = null;
     });
   }
@@ -244,8 +293,18 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
                 child: evidence != null
                     ? OcrImageReview(evidence: evidence)
-                    : photo != null
+                    : photo != null && _isProcessing
                     ? Image.memory(photo, fit: BoxFit.contain)
+                    : photo != null &&
+                          _imageWidth != null &&
+                          _imageHeight != null
+                    ? TagCropSelector(
+                        imageBytes: photo,
+                        imageWidth: _imageWidth!,
+                        imageHeight: _imageHeight!,
+                        onRegionChanged: (region) =>
+                            setState(() => _tagRegion = region),
+                      )
                     : _buildLivePreview(controller),
               ),
             ),
@@ -295,7 +354,7 @@ class _CameraScreenState extends State<CameraScreen>
                         ),
                 ),
               )
-            else
+            else if (evidence == null)
               Row(
                 children: [
                   Expanded(
@@ -308,16 +367,40 @@ class _CameraScreenState extends State<CameraScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: evidence == null || _isUploading
+                      onPressed: _tagRegion == null || _isProcessing
+                          ? null
+                          : _readTag,
+                      icon: const Icon(Icons.document_scanner_outlined),
+                      label: const Text('Read tag'),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _adjustTagRegion,
+                      icon: const Icon(Icons.crop_free),
+                      label: const Text('Adjust box'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed:
+                          _isUploading ||
+                              evidence.uploadStatus == UploadStatus.success
                           ? null
                           : _retryUpload,
                       icon: Icon(
-                        evidence?.uploadStatus == UploadStatus.success
+                        evidence.uploadStatus == UploadStatus.success
                             ? Icons.check
                             : Icons.cloud_upload_outlined,
                       ),
                       label: Text(
-                        evidence?.uploadStatus == UploadStatus.success
+                        evidence.uploadStatus == UploadStatus.success
                             ? 'Uploaded'
                             : 'Retry upload',
                       ),
@@ -326,6 +409,13 @@ class _CameraScreenState extends State<CameraScreen>
                 ],
               ),
             if (evidence != null) ...[
+              const SizedBox(height: 12),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Tag crop'),
+              ),
+              const SizedBox(height: 6),
+              TagCropReview(evidence: evidence, height: 110),
               const SizedBox(height: 10),
               _UploadStatusLine(evidence: evidence),
               if (evidence.ocrError != null) ...[
@@ -345,6 +435,13 @@ class _CameraScreenState extends State<CameraScreen>
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+              if (evidence.tagConfidence != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'OCR confidence: ${(evidence.tagConfidence! * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ],
           ],
         ),
