@@ -5,14 +5,16 @@ import 'screens/camera_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/photos_screen.dart';
 import 'services/capture_repository.dart';
+import 'services/ear_tag_reader.dart';
 import 'services/upload_service.dart';
 
 class AppColors {
-  static const canvas = Color(0xFFF4F5F1);
-  static const ink = Color(0xFF202923);
-  static const muted = Color(0xFF747C75);
-  static const accent = Color(0xFF3D684F);
-  static const line = Color(0xFFDCE1DA);
+  static const canvas = Color(0xFFF7F7F5);
+  static const panel = Color(0xFFFFFFFF);
+  static const ink = Color(0xFF1F1F1F);
+  static const muted = Color(0xFF666666);
+  static const accent = Color(0xFF1F1F1F);
+  static const line = Color(0xFFE5E5E1);
 }
 
 class CaptureApp extends StatelessWidget {
@@ -21,7 +23,7 @@ class CaptureApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Frame',
+      title: 'Jaguza',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -33,7 +35,7 @@ class CaptureApp extends StatelessWidget {
             ).copyWith(
               primary: AppColors.accent,
               onPrimary: Colors.white,
-              surface: AppColors.canvas,
+              surface: AppColors.panel,
               onSurface: AppColors.ink,
             ),
         appBarTheme: const AppBarTheme(
@@ -41,10 +43,15 @@ class CaptureApp extends StatelessWidget {
           foregroundColor: AppColors.ink,
           elevation: 0,
           centerTitle: false,
+          titleTextStyle: TextStyle(
+            color: AppColors.ink,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         navigationBarTheme: const NavigationBarThemeData(
-          backgroundColor: AppColors.canvas,
-          indicatorColor: Color(0xFFE2E9E1),
+          backgroundColor: AppColors.panel,
+          indicatorColor: Color(0xFFF0F0EE),
           elevation: 0,
         ),
         filledButtonTheme: FilledButtonThemeData(
@@ -54,9 +61,13 @@ class CaptureApp extends StatelessWidget {
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(14),
             ),
           ),
+        ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: AppColors.ink,
+          displayColor: AppColors.ink,
         ),
       ),
       home: const MainNavigation(),
@@ -75,6 +86,7 @@ class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
   List<CaptureEvidence> _captures = [];
   final CaptureRepository _captureRepository = CaptureRepository();
+  final EarTagReader _earTagReader = EarTagReader();
   final UploadService _uploadService = UploadService();
 
   @override
@@ -107,6 +119,7 @@ class _MainNavigationState extends State<MainNavigation> {
     final page = switch (_selectedIndex) {
       1 => CameraScreen(
         onEvidenceChanged: _keepCapture,
+        earTagReader: _earTagReader,
         uploadService: _uploadService,
       ),
       2 => PhotosScreen(captures: _captures),
@@ -146,6 +159,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   void dispose() {
+    _earTagReader.close();
     _uploadService.close();
     super.dispose();
   }

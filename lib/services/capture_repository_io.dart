@@ -30,6 +30,7 @@ class CaptureRepository {
         final manifestFile = File(path.join(entity.path, 'evidence.json'));
         final originalFile = File(path.join(entity.path, 'original.jpg'));
         final cropFile = File(path.join(entity.path, 'tag-crop.png'));
+        final annotatedFile = File(path.join(entity.path, 'annotated.png'));
         if (!await manifestFile.exists() || !await originalFile.exists()) {
           continue;
         }
@@ -43,6 +44,9 @@ class CaptureRepository {
             tagCropBytes: await cropFile.exists()
                 ? await cropFile.readAsBytes()
                 : Uint8List(0),
+            annotatedImageBytes: await annotatedFile.exists()
+                ? await annotatedFile.readAsBytes()
+                : null,
           ),
         );
       } catch (_) {
@@ -62,12 +66,17 @@ class CaptureRepository {
     await directory.create(recursive: true);
     final originalFile = File(path.join(directory.path, 'original.jpg'));
     final cropFile = File(path.join(directory.path, 'tag-crop.png'));
+    final annotatedFile = File(path.join(directory.path, 'annotated.png'));
     if (!await originalFile.exists()) {
       await originalFile.writeAsBytes(evidence.imageBytes, flush: true);
     }
     final cropBytes = evidence.tagCropBytes;
     if (cropBytes != null) {
       await cropFile.writeAsBytes(cropBytes, flush: true);
+    }
+    final annotatedBytes = evidence.annotatedImageBytes;
+    if (annotatedBytes != null) {
+      await annotatedFile.writeAsBytes(annotatedBytes, flush: true);
     }
     await File(
       path.join(directory.path, 'evidence.json'),

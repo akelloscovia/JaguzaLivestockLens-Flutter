@@ -18,6 +18,8 @@
 	<string>jaguza</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Frame uses the camera to capture photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Frame lets you choose a cattle photo to read its ear tag.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -19,44 +19,77 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Frame')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
-        children: [
-          Text(
-            'Your next\ngood frame.',
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w600,
-              height: 1.08,
-            ),
+      appBar: AppBar(
+        title: const Text('Jaguza'),
+        actions: [
+          IconButton(
+            onPressed: onOpenPhotos,
+            icon: const Icon(Icons.photo_library_outlined),
           ),
-          const SizedBox(height: 28),
-          FilledButton.icon(
-            onPressed: onOpenCamera,
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: const Text('Open camera'),
-          ),
-          const SizedBox(height: 36),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Recent photo',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              const SizedBox(height: 8),
+              const Text(
+                'Capture',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
                   color: AppColors.ink,
-                  fontWeight: FontWeight.w600,
+                  letterSpacing: -1,
                 ),
               ),
-              TextButton(
-                onPressed: onOpenPhotos,
-                child: const Text('View photos'),
+              const SizedBox(height: 6),
+              const Text(
+                'Ear tag photo',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onOpenCamera,
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Open camera'),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Recent',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onOpenPhotos,
+                    child: const Text('View all'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _RecentPhoto(
+                  photoBytes: photoBytes,
+                  onTap: onOpenPhotos,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _RecentPhoto(photoBytes: photoBytes, onTap: onOpenPhotos),
-        ],
+        ),
       ),
     );
   }
@@ -72,28 +105,36 @@ class _RecentPhoto extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        height: 190,
+        width: double.infinity,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFE9ECE7),
-          borderRadius: BorderRadius.circular(8),
+          color: AppColors.panel,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.line),
         ),
         child: photoBytes == null
             ? const Center(
-                child: Icon(
-                  Icons.photo_outlined,
-                  size: 34,
-                  color: AppColors.muted,
+                child: Text(
+                  'No photo yet',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               )
             : Image.memory(
                 photoBytes!,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Center(child: Icon(Icons.broken_image_outlined)),
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    size: 36,
+                    color: AppColors.muted,
+                  ),
+                ),
               ),
       ),
     );

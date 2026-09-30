@@ -60,6 +60,24 @@ class PhotosScreen extends StatelessWidget {
                       const SizedBox(height: 6),
                       TagCropReview(evidence: evidence),
                     ],
+                    if (evidence.annotatedImageBytes != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Workflow annotated image',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          evidence.annotatedImageBytes!,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     Text(
                       evidence.capturedAt.toLocal().toString().split('.').first,
@@ -93,11 +111,25 @@ class PhotosScreen extends StatelessWidget {
                           ? 'No text detected.'
                           : evidence.ocrText,
                     ),
+                    if (evidence.tagTexts.length > 1) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Other tag readings: ${evidence.tagTexts.skip(1).join(', ')}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                     if (evidence.tagConfidence != null) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'Tag OCR confidence: ${(evidence.tagConfidence! * 100).toStringAsFixed(0)}%',
+                        'On-device OCR confidence: ${(evidence.tagConfidence! * 100).toStringAsFixed(0)}%',
                         style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    if (evidence.localOcrError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'On-device OCR: ${evidence.localOcrError}',
+                        style: const TextStyle(color: Color(0xFF9E3028)),
                       ),
                     ],
                     if (evidence.blocks.isNotEmpty) ...[

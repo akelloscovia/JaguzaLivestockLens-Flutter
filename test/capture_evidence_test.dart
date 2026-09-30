@@ -12,13 +12,25 @@ void main() {
   final evidence = CaptureEvidence(
     id: 'capture-1',
     capturedAt: DateTime.utc(2026, 9, 29),
-    imageBytes: Uint8List.fromList([1, 2, 3]),
+    imageBytes: Uint8List.fromList([0xFF, 0xD8, 0xFF, 1, 2, 3]),
     imageWidth: 640,
     imageHeight: 480,
     tagCropBytes: Uint8List.fromList([4, 5]),
     tagCropWidth: 120,
     tagCropHeight: 48,
     tagRegion: const TagRegion(left: 100, top: 80, right: 220, bottom: 128),
+    tagTexts: const ['TAG 4821'],
+    tagDetections: const [
+      TagDetectionEvidence(
+        left: 100,
+        top: 80,
+        right: 220,
+        bottom: 128,
+        confidence: 0.93,
+        label: 'ear_tag',
+      ),
+    ],
+    annotatedImageBytes: Uint8List.fromList([6, 7]),
     ocrText: 'TAG 4821',
     tagConfidence: 0.92,
     blocks: const [
@@ -42,9 +54,38 @@ void main() {
 
     expect(ocr['text'], 'TAG 4821');
     expect(ocr['tag_id'], 'TAG 4821');
+    expect(json['tag_detections'], hasLength(1));
     expect(bounds['left'], 12);
     expect(bounds['bottom'], 61);
     expect(blocks.single['confidence'], 0.92);
+  });
+
+  test('detects the original image media type from its bytes', () {
+    final pngEvidence = CaptureEvidence(
+      id: 'png-capture',
+      capturedAt: DateTime.utc(2026, 9, 29),
+      imageBytes: Uint8List.fromList([
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+      ]),
+      imageWidth: 640,
+      imageHeight: 480,
+      ocrText: '',
+      blocks: const [],
+    );
+
+    expect(pngEvidence.imageMimeType, 'image/png');
+    expect(pngEvidence.imageFileExtension, 'png');
+    expect(
+      (pngEvidence.toOcrJson()['image']! as Map<String, Object?>)['mime_type'],
+      'image/png',
+    );
   });
 
   test('unconfigured endpoint leaves upload pending', () async {
@@ -86,6 +127,11 @@ void main() {
       );
       expect(multipartBody, contains('content-type: image/png'));
       expect(multipartBody, contains(String.fromCharCodes([4, 5])));
+      expect(
+        multipartBody,
+        contains('name="annotated_image"; filename="annotated_capture-1.png"'),
+      );
+      expect(multipartBody, contains(String.fromCharCodes([6, 7])));
       return http.Response('accepted', 201);
     });
     final service = UploadService(
@@ -97,6 +143,46 @@ void main() {
 
     expect(result.status, UploadStatus.success, reason: result.message);
     expect(result.message, contains('201'));
+    service.close();
+  });
+
+  test('upload preserves PNG file type in multipart metadata', () async {
+    final pngEvidence = CaptureEvidence(
+      id: 'png-capture',
+      capturedAt: DateTime.utc(2026, 9, 29),
+      imageBytes: Uint8List.fromList([
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+      ]),
+      imageWidth: 640,
+      imageHeight: 480,
+      ocrText: '',
+      blocks: const [],
+    );
+    final client = MockClient((request) async {
+      final multipartBody = String.fromCharCodes(request.bodyBytes);
+      expect(
+        multipartBody,
+        contains('name="image"; filename="capture_png-capture.png"'),
+      );
+      expect(multipartBody, contains('content-type: image/png'));
+      expect(multipartBody, contains('"mime_type":"image/png"'));
+      return http.Response('accepted', 201);
+    });
+    final service = UploadService(
+      client: client,
+      endpoint: 'https://api.example.test/captures',
+    );
+
+    final result = await service.upload(pngEvidence);
+
+    expect(result.status, UploadStatus.success, reason: result.message);
     service.close();
   });
 
@@ -115,7 +201,13 @@ void main() {
         expect(restored, hasLength(1));
         expect(restored.single.imageBytes, evidence.imageBytes);
         expect(restored.single.tagCropBytes, evidence.tagCropBytes);
+        expect(
+          restored.single.annotatedImageBytes,
+          evidence.annotatedImageBytes,
+        );
         expect(restored.single.tagRegion?.left, 100);
+        expect(restored.single.tagTexts, ['TAG 4821']);
+        expect(restored.single.tagDetections.single.confidence, 0.93);
         expect(restored.single.ocrText, 'TAG 4821');
         expect(restored.single.tagConfidence, 0.92);
         expect(restored.single.blocks.single.left, 12);

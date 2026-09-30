@@ -17,7 +17,10 @@ class UploadService {
     : _client = client ?? http.Client(),
       _endpoint = endpoint ?? configuredEndpoint;
 
-  static const configuredEndpoint = String.fromEnvironment('UPLOAD_API_URL');
+  static const configuredEndpoint = String.fromEnvironment(
+    'UPLOAD_API_URL',
+    defaultValue: '',
+  );
 
   final http.Client _client;
   final String _endpoint;
@@ -28,7 +31,17 @@ class UploadService {
     if (!isConfigured) {
       return const UploadResult(
         status: UploadStatus.pending,
-        message: 'Set UPLOAD_API_URL to connect the backend.',
+        message:
+            'Upload endpoint is not configured. Run with --dart-define=UPLOAD_API_URL=<your-url>.',
+      );
+    }
+
+    final imageMimeType = evidence.imageMimeType;
+    final imageFileExtension = evidence.imageFileExtension;
+    if (imageMimeType == null || imageFileExtension == null) {
+      return const UploadResult(
+        status: UploadStatus.failure,
+        message: 'The selected image format is not supported for upload.',
       );
     }
 
@@ -46,8 +59,8 @@ class UploadService {
           http.MultipartFile.fromBytes(
             'image',
             evidence.imageBytes,
-            filename: 'capture_${evidence.id}.jpg',
-            contentType: MediaType('image', 'jpeg'),
+            filename: 'capture_${evidence.id}.$imageFileExtension',
+            contentType: MediaType.parse(imageMimeType),
           ),
         )
         ..fields['ocr_json'] = jsonEncode(evidence.toOcrJson());
@@ -58,6 +71,17 @@ class UploadService {
             'tag_crop',
             cropBytes,
             filename: 'tag_crop_${evidence.id}.png',
+            contentType: MediaType('image', 'png'),
+          ),
+        );
+      }
+      final annotatedBytes = evidence.annotatedImageBytes;
+      if (annotatedBytes != null) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'annotated_image',
+            annotatedBytes,
+            filename: 'annotated_${evidence.id}.png',
             contentType: MediaType('image', 'png'),
           ),
         );

@@ -78,15 +78,32 @@ class _TagRegionPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
+    final detections = evidence.tagDetections;
+    if (detections.isNotEmpty) {
+      for (final detection in detections) {
+        canvas.drawRect(
+          Rect.fromLTRB(
+            destination.left + detection.left * scaleX,
+            destination.top + detection.top * scaleY,
+            destination.left + detection.right * scaleX,
+            destination.top + detection.bottom * scaleY,
+          ),
+          paint,
+        );
+      }
+      return;
+    }
     final region = evidence.tagRegion;
     if (region == null) return;
-    final rect = Rect.fromLTRB(
-      destination.left + region.left * scaleX,
-      destination.top + region.top * scaleY,
-      destination.left + region.right * scaleX,
-      destination.top + region.bottom * scaleY,
+    canvas.drawRect(
+      Rect.fromLTRB(
+        destination.left + region.left * scaleX,
+        destination.top + region.top * scaleY,
+        destination.left + region.right * scaleX,
+        destination.top + region.bottom * scaleY,
+      ),
+      paint,
     );
-    canvas.drawRect(rect, paint);
   }
 
   @override
