@@ -15,7 +15,6 @@ import '../services/ocr_service.dart';
 import '../services/tag_cropper.dart';
 import '../services/upload_service.dart';
 import '../widgets/ocr_image_review.dart';
-import '../widgets/tag_crop_selector.dart';
 
 bool isSupportedGalleryMediaType(String? mimeType) {
   final normalized = mimeType?.trim().toLowerCase();
@@ -54,7 +53,6 @@ class _CameraScreenState extends State<CameraScreen>
   CameraController? _controller;
   Uint8List? _capturedPhoto;
   CaptureEvidence? _evidence;
-  TagRegion? _tagRegion;
   int? _imageWidth;
   int? _imageHeight;
   String? _captureId;
@@ -253,96 +251,28 @@ class _CameraScreenState extends State<CameraScreen>
       _imageWidth = dimensions.width;
       _imageHeight = dimensions.height;
       _captureId = captureId;
-      _tagRegion = null;
     });
-    if (widget.earTagReader.isConfigured) {
-      await _readTagWithBackend(
-        photoBytes,
-        dimensions.width,
-        dimensions.height,
-        captureId,
-      );
-    }
   }
 
   Future<void> _readTag() async {
-    if (widget.earTagReader.isConfigured) {
-      final photo = _capturedPhoto;
-      final width = _imageWidth;
-      final height = _imageHeight;
-      final captureId = _captureId;
-      if (photo == null || width == null || height == null) return;
-      await _readTagWithBackend(
-        photo,
-        width,
-        height,
-        captureId ?? DateTime.now().microsecondsSinceEpoch.toString(),
-      );
-      return;
-    }
     final photo = _capturedPhoto;
-    final region = _tagRegion;
     final width = _imageWidth;
     final height = _imageHeight;
-    final captureId = _captureId;
-    if (photo == null || region == null || width == null || height == null) {
+    if (photo == null || width == null || height == null) return;
+    if (!widget.earTagReader.isConfigured) {
+      setState(
+        () => _errorMessage =
+            'Automatic ear-tag detection is not configured. '
+            'Set EAR_TAG_API_URL and try again.',
+      );
       return;
     }
-    setState(() {
-      _isProcessing = true;
-      _errorMessage = null;
-      _processingMessage = 'Cropping tag region...';
-    });
-    try {
-      final crop = await cropTagImage(photo, region);
-      if (mounted) {
-        setState(() => _processingMessage = 'Reading text on tag...');
-      }
-      OcrResult? result;
-      String? ocrError;
-      try {
-        result = await _ocrService.recognize(crop: crop);
-      } catch (error) {
-        ocrError = error is UnsupportedError
-            ? error.message
-            : 'Tag OCR failed: $error';
-      }
-      final evidence = CaptureEvidence(
-        id: captureId ?? DateTime.now().microsecondsSinceEpoch.toString(),
-        capturedAt: DateTime.now().toUtc(),
-        imageBytes: photo,
-        imageWidth: width,
-        imageHeight: height,
-        tagCropBytes: crop.bytes,
-        tagCropWidth: crop.width,
-        tagCropHeight: crop.height,
-        tagRegion: region,
-        tagTexts: result == null || result.text.isEmpty
-            ? const []
-            : [result.text],
-        ocrText: result?.text ?? '',
-        tagConfidence: result?.confidence,
-        localOcrText: result?.text,
-        localOcrError: ocrError,
-        blocks: result?.blocks ?? const [],
-        ocrError: ocrError,
-      );
-      if (mounted) {
-        setState(() {
-          _evidence = evidence;
-          _isProcessing = false;
-          _processingMessage = 'Uploading tag and OCR evidence...';
-        });
-      }
-      await widget.onEvidenceChanged(evidence);
-      await _uploadEvidence(evidence, widget.onEvidenceChanged);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _errorMessage = 'Could not process tag: $error');
-      }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
+    await _readTagWithBackend(
+      photo,
+      width,
+      height,
+      _captureId ?? DateTime.now().microsecondsSinceEpoch.toString(),
+    );
   }
 
   Future<void> _readTagWithBackend(
@@ -397,7 +327,7 @@ class _CameraScreenState extends State<CameraScreen>
       );
       final primaryDetection = detections.isEmpty ? null : detections.first;
       final region = primaryDetection == null
-          ? _tagRegion
+          ? null
           : TagRegion(
               left: primaryDetection.left,
               top: primaryDetection.top,
@@ -491,18 +421,9 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() {
       _capturedPhoto = null;
       _evidence = null;
-      _tagRegion = null;
       _imageWidth = null;
       _imageHeight = null;
       _captureId = null;
-      _errorMessage = null;
-    });
-  }
-
-  void _adjustTagRegion() {
-    setState(() {
-      _evidence = null;
-      _tagRegion = null;
       _errorMessage = null;
     });
   }
@@ -511,41 +432,6 @@ class _CameraScreenState extends State<CameraScreen>
     final evidence = _evidence;
     if (evidence == null || _isUploading) return;
     await _uploadEvidence(evidence, widget.onEvidenceChanged);
-  }
-
-  Future<void> _uploadPhotoOnly() async {
-    final photo = _capturedPhoto;
-    final width = _imageWidth;
-    final height = _imageHeight;
-    if (photo == null || width == null || height == null || _isUploading) {
-      return;
-    }
-    final evidence = CaptureEvidence(
-      id:
-          _captureId ??
-          DateTime.now().toUtc().microsecondsSinceEpoch.toString(),
-      capturedAt: DateTime.now().toUtc(),
-      imageBytes: photo,
-      imageWidth: width,
-      imageHeight: height,
-      ocrText: '',
-      blocks: const [],
-    );
-    setState(() {
-      _isProcessing = true;
-      _errorMessage = null;
-      _evidence = evidence;
-    });
-    try {
-      await widget.onEvidenceChanged(evidence);
-      await _uploadEvidence(evidence, widget.onEvidenceChanged);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _errorMessage = 'Could not upload photo: $error');
-      }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
   }
 
   @override
@@ -579,16 +465,8 @@ class _CameraScreenState extends State<CameraScreen>
                     ? OcrImageReview(evidence: evidence)
                     : photo != null && _isProcessing
                     ? Image.memory(photo, fit: BoxFit.contain)
-                    : photo != null &&
-                          _imageWidth != null &&
-                          _imageHeight != null
-                    ? TagCropSelector(
-                        imageBytes: photo,
-                        imageWidth: _imageWidth!,
-                        imageHeight: _imageHeight!,
-                        onRegionChanged: (region) =>
-                            setState(() => _tagRegion = region),
-                      )
+                    : photo != null
+                    ? Image.memory(photo, fit: BoxFit.contain)
                     : _buildLivePreview(controller),
               ),
             ),
@@ -670,24 +548,9 @@ class _CameraScreenState extends State<CameraScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed:
-                          _isProcessing ||
-                              (!widget.earTagReader.isConfigured &&
-                                  _tagRegion == null &&
-                                  !widget.uploadService.isConfigured)
-                          ? null
-                          : !widget.earTagReader.isConfigured &&
-                                _tagRegion == null
-                          ? _uploadPhotoOnly
-                          : _readTag,
+                      onPressed: _isProcessing ? null : _readTag,
                       icon: const Icon(Icons.document_scanner_outlined),
-                      label: Text(
-                        widget.earTagReader.isConfigured
-                            ? 'Retry tag detection'
-                            : _tagRegion == null
-                            ? 'Upload photo'
-                            : 'Read selected crop',
-                      ),
+                      label: const Text('Detect and read ear tag'),
                     ),
                   ),
                 ],
@@ -697,9 +560,9 @@ class _CameraScreenState extends State<CameraScreen>
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _adjustTagRegion,
-                      icon: const Icon(Icons.crop_free),
-                      label: const Text('Adjust box'),
+                      onPressed: _retakePhoto,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('New photo'),
                     ),
                   ),
                   const SizedBox(width: 12),

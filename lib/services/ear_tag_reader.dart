@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class EarTagDetection {
@@ -98,7 +99,10 @@ class EarTagReader {
     : _client = client ?? http.Client(),
       _endpoint = endpoint ?? configuredEndpoint;
 
-  static const configuredEndpoint = String.fromEnvironment('EAR_TAG_API_URL');
+  static const configuredEndpoint = String.fromEnvironment(
+    'EAR_TAG_API_URL',
+    defaultValue: kIsWeb ? 'http://127.0.0.1:8001/api/read-ear-tag' : '',
+  );
 
   final http.Client _client;
   final String _endpoint;

@@ -15,14 +15,32 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 
+def load_local_env() -> None:
+    env_path = Path(__file__).with_name(".env")
+    if not env_path.is_file():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name:
+            os.environ.setdefault(name, value)
+
+
+load_local_env()
+
 HOST = "127.0.0.1"
 PORT = 8001
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 ROBOFLOW_WORKFLOW_URL = os.environ.get(
     "ROBOFLOW_WORKFLOW_URL",
-    "https://serverless.roboflow.com/infer/workflows/"
-    "akello-scovia/jaguzi-ear-tag-reader-1790754713845",
-)
+    "https://serverless.roboflow.com/"
+    "akello-scovia/workflows/"
+    "jaguzi-ear-tag-reader-1790754713845",
+).strip()
 UPLOAD_DIRECTORY = Path(
     os.environ.get("JAGUZA_UPLOAD_DIR", Path(__file__).with_name("uploads"))
 )
@@ -89,6 +107,7 @@ class UploadHandler(BaseHTTPRequestHandler):
             {
                 "status": "ready",
                 "model_configured": bool(os.environ.get("ROBOFLOW_API_KEY", "").strip()),
+                "workflow_url": ROBOFLOW_WORKFLOW_URL,
             },
         )
 
@@ -271,7 +290,11 @@ class UploadHandler(BaseHTTPRequestHandler):
             detail = error.read(2048).decode("utf-8", errors="replace")
             self._send_json(
                 error.code,
-                {"error": f"Roboflow workflow returned HTTP {error.code}.", "detail": detail},
+                {
+                    "error": f"Roboflow workflow returned HTTP {error.code}.",
+                    "detail": detail,
+                    "workflow_url": ROBOFLOW_WORKFLOW_URL,
+                },
             )
             return
         except (URLError, TimeoutError, OSError) as error:

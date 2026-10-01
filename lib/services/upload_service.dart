@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -19,7 +20,7 @@ class UploadService {
 
   static const configuredEndpoint = String.fromEnvironment(
     'UPLOAD_API_URL',
-    defaultValue: '',
+    defaultValue: kIsWeb ? 'http://127.0.0.1:8001/api/uploads' : '',
   );
 
   final http.Client _client;

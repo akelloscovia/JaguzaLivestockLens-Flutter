@@ -46,10 +46,18 @@ When configured this way, selecting a photo automatically sends it for tag detec
 The Jaguzi backend should call the Roboflow Workflow. The current Serverless Workflows route is:
 
 ```text
-https://serverless.roboflow.com/infer/workflows/akello-scovia/jaguzi-ear-tag-reader-1790754713845
+https://serverless.roboflow.com/akello-scovia/workflows/jaguzi-ear-tag-reader-1790754713845
 ```
 
 The backend sends `Authorization: Bearer <ROBOFLOW_API_KEY>` and a JSON body using `inputs.image.type = base64` with the base64 image value. Keep that private Roboflow key on the backend; do not pass it to Flutter or compile it into the mobile app.
+
+For local development, create `backend/.env` once with the private key:
+
+```text
+ROBOFLOW_API_KEY=your-roboflow-api-key
+```
+
+The local backend loads this file automatically. It is ignored by Git. Then start the backend normally with `python backend/upload_server.py`.
 
 ## Evidence Upload
 
