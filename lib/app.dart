@@ -15,6 +15,10 @@ class AppColors {
   static const muted = Color(0xFF666666);
   static const accent = Color(0xFF1F1F1F);
   static const line = Color(0xFFE5E5E1);
+  static const success = Color(0xFF2E7D4F);
+  static const successSoft = Color(0xFFE6F2EA);
+  static const danger = Color(0xFF9E3028);
+  static const dangerSoft = Color(0xFFF9E8E6);
 }
 
 class CaptureApp extends StatelessWidget {

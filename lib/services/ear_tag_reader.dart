@@ -101,7 +101,7 @@ class EarTagReader {
 
   static const configuredEndpoint = String.fromEnvironment(
     'EAR_TAG_API_URL',
-    defaultValue: kIsWeb ? 'http://127.0.0.1:8001/api/read-ear-tag' : '',
+    defaultValue: 'http://143.198.174.35:9062/api/read-ear-tag',
   );
 
   final http.Client _client;
@@ -122,13 +122,28 @@ class EarTagReader {
       );
     }
 
-    final response = await _client
-        .post(
-          uri,
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'imageBase64': base64Encode(imageBytes)}),
-        )
-        .timeout(const Duration(seconds: 90));
+    final requestBody = jsonEncode({'imageBase64': base64Encode(imageBytes)});
+    final stopwatch = Stopwatch()..start();
+    debugPrint(
+      '[EarTag] POST $uri image=${imageBytes.length}B body=${requestBody.length}B',
+    );
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 90));
+    } catch (error) {
+      debugPrint('[EarTag] failed after ${stopwatch.elapsedMilliseconds}ms: $error');
+      rethrow;
+    }
+    debugPrint(
+      '[EarTag] HTTP ${response.statusCode} in ${stopwatch.elapsedMilliseconds}ms '
+      'response=${response.bodyBytes.length}B',
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EarTagReaderException(
         'Ear-tag reading failed (HTTP ${response.statusCode}): '
