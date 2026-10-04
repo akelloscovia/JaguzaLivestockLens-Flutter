@@ -8,7 +8,7 @@ import 'package:jaguza/services/ear_tag_reader.dart';
 
 void main() {
   test(
-    'sends imageBase64 and parses text, detection, and output image',
+    'sends imageFile as multipart and parses roboflow/openai response',
     () async {
       final sourceImage = Uint8List.fromList([1, 2, 3, 4]);
       final annotatedImage = Uint8List.fromList([9, 8, 7]);
@@ -17,40 +17,55 @@ void main() {
           request.url,
           Uri.parse('https://api.example.test/api/read-ear-tag'),
         );
-        expect(request.headers['content-type'], 'application/json');
-        expect(request.headers.containsKey('authorization'), isFalse);
-        final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['imageBase64'], base64Encode(sourceImage));
+        expect(
+          request.headers['content-type'],
+          contains('multipart/form-data'),
+        );
+        expect(request.bodyBytes, containsAllInOrder(sourceImage));
+        expect(utf8.decode(request.bodyBytes, allowMalformed: true), contains('imageFile'));
+
         return http.Response(
           jsonEncode({
-            'outputs': [
-              {
-                'tag_text': ['BLITZ 1042'],
-                'tag_detections': [
-                  {
-                    'x': 50,
-                    'y': 40,
-                    'width': 20,
-                    'height': 12,
-                    'confidence': 0.93,
-                    'class': 'ear_tag',
-                  },
-                ],
-                'output_image': base64Encode(annotatedImage),
-              },
-            ],
+            'roboflow_reading': {
+              'outputs': [
+                {
+                  'tag_text': ['SMARTBOW\nEARTAG LIFE\nDE 0773247200'],
+                  'tag_detections': [
+                    {
+                      'x': 50,
+                      'y': 40,
+                      'width': 20,
+                      'height': 12,
+                      'confidence': 0.93,
+                      'class': 'cattle ear tag',
+                    },
+                  ],
+                },
+              ],
+            },
+            'openai_reading': {
+              'tag_text': 'SMARTBOW EARTAG LIFE\nDE 0773247200',
+              'tag_number': '0773247200',
+              'tag_color': 'yellow',
+            },
+            'pictures': {
+              'original': 'https://pictures.example.test/original.jpg',
+              'annotated': 'https://pictures.example.test/annotated.jpg',
+            },
           }),
           200,
         );
       });
       final reader = EarTagReader(
-        client: client,
+        client: ImageFetchingClient(client, annotatedImage),
         endpoint: 'https://api.example.test/api/read-ear-tag',
       );
 
       final result = await reader.readEarTag(sourceImage);
 
-      expect(result.primaryTagText, 'BLITZ 1042');
+      expect(result.primaryTagText, 'SMARTBOW EARTAG LIFE\nDE 0773247200');
+      expect(result.tagNumber, '0773247200');
+      expect(result.tagColor, 'yellow');
       expect(result.primaryDetection?.left, 40);
       expect(result.primaryDetection?.top, 34);
       expect(result.primaryDetection?.right, 60);
@@ -94,4 +109,21 @@ void main() {
     );
     reader.close();
   });
+}
+
+/// Wraps a [MockClient] so the multipart POST goes through it, while GET
+/// requests for the annotated picture return fake image bytes.
+class ImageFetchingClient extends http.BaseClient {
+  ImageFetchingClient(this._inner, this._imageBytes);
+
+  final http.Client _inner;
+  final Uint8List _imageBytes;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.method == 'GET') {
+      return http.StreamedResponse(Stream.value(_imageBytes), 200);
+    }
+    return _inner.send(request);
+  }
 }

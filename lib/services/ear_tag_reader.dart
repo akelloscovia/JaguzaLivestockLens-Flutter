@@ -76,11 +76,15 @@ class EarTagReadResult {
     required this.tagTexts,
     required this.detections,
     this.outputImageBytes,
+    this.tagNumber,
+    this.tagColor,
   });
 
   final List<String> tagTexts;
   final List<EarTagDetection> detections;
   final Uint8List? outputImageBytes;
+  final String? tagNumber;
+  final String? tagColor;
 
   String? get primaryTagText => tagTexts.isEmpty ? null : tagTexts.first;
 
@@ -122,20 +126,22 @@ class EarTagReader {
       );
     }
 
-    final requestBody = jsonEncode({'imageBase64': base64Encode(imageBytes)});
     final stopwatch = Stopwatch()..start();
-    debugPrint(
-      '[EarTag] POST $uri image=${imageBytes.length}B body=${requestBody.length}B',
-    );
+    debugPrint('[EarTag] POST $uri image=${imageBytes.length}B (multipart)');
     final http.Response response;
     try {
-      response = await _client
-          .post(
-            uri,
-            headers: const {'Content-Type': 'application/json'},
-            body: requestBody,
-          )
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'imageFile',
+            imageBytes,
+            filename: 'ear_tag.jpg',
+          ),
+        );
+      final streamed = await _client
+          .send(request)
           .timeout(const Duration(seconds: 90));
+      response = await http.Response.fromStream(streamed);
     } catch (error) {
       debugPrint('[EarTag] failed after ${stopwatch.elapsedMilliseconds}ms: $error');
       rethrow;
@@ -153,31 +159,63 @@ class EarTagReader {
 
     final decoded = jsonDecode(response.body);
     final body = _mapValue(decoded);
-    final outputs = body?['outputs'];
-    if (outputs is! List || outputs.isEmpty) {
+    if (body == null) {
       throw const EarTagReaderException(
-        'The ear-tag API response contains no outputs.',
-      );
-    }
-    final first = _mapValue(outputs.first);
-    if (first == null) {
-      throw const EarTagReaderException(
-        'The first ear-tag API output is not an object.',
+        'The ear-tag API response is not an object.',
       );
     }
 
-    final texts = _parseTexts(first['tag_text']);
-    final detections = _parseDetections(first['tag_detections']);
+    final roboflow = _mapValue(body['roboflow_reading']);
+    final outputs = roboflow?['outputs'];
+    final first = outputs is List && outputs.isNotEmpty
+        ? _mapValue(outputs.first)
+        : null;
+
+    final openai = _mapValue(body['openai_reading']);
+
+    final detectionTexts = first == null
+        ? const <String>[]
+        : _parseTexts(first['tag_text']);
+    final openaiText = _string(openai?['tag_text'])?.trim();
+    final texts = [
+      if (openaiText != null && openaiText.isNotEmpty) openaiText,
+      ...detectionTexts.where((text) => text != openaiText),
+    ];
+    final detections = first == null
+        ? const <EarTagDetection>[]
+        : _parseDetections(first['tag_detections']);
     if (texts.isEmpty && detections.isEmpty) {
       throw const EarTagReaderException(
         'The ear-tag API returned no tag text or detections.',
       );
     }
+
+    final pictures = _mapValue(body['pictures']);
+    final annotatedUrl =
+        _string(pictures?['annotated']) ?? _string(pictures?['original']);
+    final outputImageBytes = await _fetchImage(annotatedUrl);
+
     return EarTagReadResult(
       tagTexts: texts,
       detections: detections,
-      outputImageBytes: _parseOutputImage(first['output_image']),
+      outputImageBytes: outputImageBytes,
+      tagNumber: _string(openai?['tag_number']),
+      tagColor: _string(openai?['tag_color']),
     );
+  }
+
+  Future<Uint8List?> _fetchImage(String? url) async {
+    if (url == null || url.trim().isEmpty) return null;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    try {
+      final response = await _client.get(uri).timeout(const Duration(seconds: 30));
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      return response.bodyBytes;
+    } catch (error) {
+      debugPrint('[EarTag] failed to fetch picture $uri: $error');
+      return null;
+    }
   }
 
   void close() => _client.close();
@@ -203,20 +241,6 @@ class EarTagReader {
         .whereType<Map<String, dynamic>>()
         .map(EarTagDetection.fromJson)
         .toList(growable: false);
-  }
-
-  static Uint8List? _parseOutputImage(Object? value) {
-    if (value is! String || value.trim().isEmpty) return null;
-    final raw = value.trim();
-    final comma = raw.indexOf(',');
-    final base64Value = raw.startsWith('data:') && comma >= 0
-        ? raw.substring(comma + 1)
-        : raw;
-    try {
-      return base64Decode(base64Value);
-    } on FormatException {
-      return null;
-    }
   }
 
   static String _shorten(String value) {

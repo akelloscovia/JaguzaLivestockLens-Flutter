@@ -8,12 +8,16 @@ import 'services/capture_repository.dart';
 import 'services/ear_tag_reader.dart';
 import 'services/upload_service.dart';
 
+/// Palette derived from the app logo (lib/../assets/icon/app_icon.png):
+/// cattle-tag green background, amber ear tag, deep-green shadow accent.
 class AppColors {
   static const canvas = Color(0xFFF7F7F5);
   static const panel = Color(0xFFFFFFFF);
   static const ink = Color(0xFF1F1F1F);
   static const muted = Color(0xFF666666);
-  static const accent = Color(0xFF1F1F1F);
+  static const accent = Color(0xFF12A334); // logo green
+  static const accentDark = Color(0xFF025A23); // logo shadow green
+  static const tag = Color(0xFFFEBF0D); // logo ear-tag amber
   static const line = Color(0xFFE5E5E1);
   static const success = Color(0xFF2E7D4F);
   static const successSoft = Color(0xFFE6F2EA);
@@ -39,6 +43,10 @@ class CaptureApp extends StatelessWidget {
             ).copyWith(
               primary: AppColors.accent,
               onPrimary: Colors.white,
+              primaryContainer: AppColors.accentDark,
+              onPrimaryContainer: Colors.white,
+              secondary: AppColors.tag,
+              onSecondary: AppColors.ink,
               surface: AppColors.panel,
               onSurface: AppColors.ink,
             ),
@@ -53,10 +61,17 @@ class CaptureApp extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        navigationBarTheme: const NavigationBarThemeData(
+        navigationBarTheme: NavigationBarThemeData(
           backgroundColor: AppColors.panel,
-          indicatorColor: Color(0xFFF0F0EE),
+          indicatorColor: AppColors.accent.withValues(alpha: 0.14),
           elevation: 0,
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            return IconThemeData(
+              color: states.contains(WidgetState.selected)
+                  ? AppColors.accentDark
+                  : AppColors.muted,
+            );
+          }),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
@@ -68,6 +83,13 @@ class CaptureApp extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
             ),
           ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppColors.accent,
         ),
         textTheme: ThemeData.light().textTheme.apply(
           bodyColor: AppColors.ink,
